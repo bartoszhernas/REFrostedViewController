@@ -29,10 +29,8 @@
 
 @interface REFrostedViewController ()
 
-@property (assign, readwrite, nonatomic) CGFloat imageViewWidth;
-@property (strong, readwrite, nonatomic) UIImage *image;
-@property (strong, readwrite, nonatomic) UIImageView *imageView;
-@property (strong, readwrite, nonatomic) UIButton *fadedView;
+@property (assign, readwrite, nonatomic) CGFloat toolbarViewWidth;
+@property (strong, readwrite, nonatomic) UIToolbar *toolbarView;
 @property (assign, readwrite, nonatomic) BOOL visible;
 @property (assign, readwrite, nonatomic) CGFloat minimumChildViewWidth;
 
@@ -73,29 +71,13 @@
     self.blurSaturationDeltaFactor = 1.8f;
     self.threshold = 50.0f;
     self.blurRadius = 10.0f;
-}
-
-- (void)loadView
-{
-    [super loadView];
-    self.view.clipsToBounds = YES;
-    self.view.hidden = NO;
-    self.imageView = ({
-        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectNull];
+    self.toolbarView = ({
+        UIToolbar *imageView = [[UIToolbar alloc] initWithFrame:CGRectNull];
         imageView.contentMode = UIViewContentModeLeft;
         imageView.clipsToBounds = YES;
         imageView;
     });
-    [self.view addSubview:self.imageView];
-    
-    self.fadedView = ({
-        UIButton *button = [[UIButton alloc] initWithFrame:self.view.bounds];
-        button.backgroundColor = [UIColor colorWithWhite:0 alpha:0.3f];
-        button.alpha = 0;
-        [button addTarget:self action:@selector(fadedViewPressed:) forControlEvents:UIControlEventTouchUpInside];
-        button;
-    });
-    [self.view addSubview:self.fadedView];
+    [self.view addSubview:self.toolbarView];
     
     [self.view addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(panGestureRecognizerDidRecognize:)]];
 }
@@ -133,27 +115,27 @@
 
 - (void)presentFromViewController:(UIViewController *)controller
 {
+    self.view.backgroundColor = [UIColor clearColor];
+    controller.view.backgroundColor = [UIColor clearColor];
     self.visible = YES;
-    self.imageViewWidth = 0;
-    self.imageView.image = [[controller.view re_screenshot] re_applyBlurWithRadius:self.blurRadius tintColor:self.blurTintColor saturationDeltaFactor:self.blurSaturationDeltaFactor maskImage:nil];
+    self.toolbarViewWidth = 0;
     self.view.frame = controller.view.bounds;
     [self addToParentViewController:controller callingAppearanceMethods:YES];
     
-    self.imageView.frame = CGRectMake(0, 0, 0, self.imageView.image.size.height);
-    self.fadedView.frame = CGRectMake(0, 0, self.imageView.image.size.width, self.imageView.image.size.height);
+    self.toolbarView.frame = CGRectMake(0, 0, 0, controller.view.frame.size.height);
     
     self.minimumChildViewWidth = self.view.frame.size.width - self.threshold;
     [self updateChildViewLayout];
     [self.view.subviews enumerateObjectsWithOptions:NSEnumerationReverse usingBlock:^(UIView *view, NSUInteger idx, BOOL *stop) {
-        if (![view isEqual:self.imageView] && ![view isEqual:self.fadedView]) {
+        if (![view isEqual:self.toolbarView]) {
             [self.view bringSubviewToFront:view];
+            self.view.backgroundColor = [UIColor clearColor];
         }
     }];
 }
 
 - (void)presentFromViewController:(UIViewController *)controller animated:(BOOL)animated completion:(void(^)(void))completionHandler
 {
-    [self view];
     [self presentFromViewController:controller];
     
     void (^completionHandlerBlock)(BOOL finished) = ^(BOOL finished) {
@@ -163,11 +145,9 @@
     
     if (animated) {
         [UIView animateWithDuration:self.animationDuration animations:^{
-            self.fadedView.alpha = 1;
             [self updateViewsWithThreshold:self.threshold];
         } completion:completionHandlerBlock];
     } else {
-        self.fadedView.alpha = 1;
         [self updateViewsWithThreshold:self.threshold];
         completionHandlerBlock(YES);
     }
@@ -175,7 +155,6 @@
 
 - (void)presentFromViewController:(UIViewController *)controller panGestureRecognizer:(UIPanGestureRecognizer *)recognizer
 {
-    [self view];
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         [self presentFromViewController:controller];
     } else {
@@ -183,19 +162,12 @@
     }
 }
 
-- (void)reloadBackground
-{
-    UIView *superview = self.view.superview;
-    [self.view removeFromSuperview];
-    self.imageView.image = [[superview re_screenshot] re_applyBlurWithRadius:self.blurRadius tintColor:self.blurTintColor saturationDeltaFactor:self.blurSaturationDeltaFactor maskImage:nil];
-    [superview addSubview:self.view];
-}
+
 
 - (void)dismissAnimated:(BOOL)animated animationDuration:(CGFloat)duration completion:(void(^)(void))completionHandler
 {
     self.visible = NO;
     void (^hideBlock)(void) = ^{
-        self.fadedView.alpha = 0;
         [self updateViewsWithThreshold:self.view.frame.size.width];
     };
     void (^completionHandlerBlock)(BOOL finished) = ^(BOOL finished) {
@@ -216,7 +188,6 @@
 
 - (void)dismissViewControllerAnimated:(BOOL)animated completion:(void (^)(void))completion
 {
-    [self reloadBackground];
     [self dismissAnimated:animated animationDuration:self.animationDuration completion:completion];
 }
 
@@ -224,14 +195,9 @@
 {
     CGFloat offset = self.view.frame.size.width - threshold;
     
-    CGRect frame = self.imageView.frame;
+    CGRect frame = self.toolbarView.frame;
     frame.size.width = offset;
-    self.imageView.frame = frame;
-    
-    frame = self.fadedView.frame;
-    frame.size.width = self.view.frame.size.width - offset;
-    frame.origin.x = offset;
-    self.fadedView.frame = frame;
+    self.toolbarView.frame = frame;
     
     [self updateChildViewLayout];
 }
@@ -239,13 +205,14 @@
 - (void)updateChildViewLayout
 {
     for (UIView *view in self.view.subviews) {
-        if ([view isEqual:self.imageView] || [view isEqual:self.fadedView])
+        if ([view isKindOfClass:[UIToolbar class]])
             continue;
-        CGFloat width = self.imageView.frame.size.width < self.minimumChildViewWidth ? self.minimumChildViewWidth : self.imageView.frame.size.width;
-        CGFloat x = self.imageView.frame.size.width < self.minimumChildViewWidth ? self.imageView.frame.size.width - self.minimumChildViewWidth : 0;
+        CGFloat width = self.toolbarView.frame.size.width < self.minimumChildViewWidth ? self.minimumChildViewWidth : self.toolbarView.frame.size.width;
+        CGFloat x = self.toolbarView.frame.size.width < self.minimumChildViewWidth ? self.toolbarView.frame.size.width - self.minimumChildViewWidth : 0;
         
         CGRect frame = CGRectMake(x, 0, width, self.view.frame.size.height);
         view.frame = frame;
+        view.backgroundColor = [UIColor clearColor];
     }
 }
 
@@ -265,26 +232,21 @@
     CGPoint point = [recognizer translationInView:self.view];
     
     if (recognizer.state == UIGestureRecognizerStateBegan) {
-        self.imageViewWidth = self.imageView.frame.size.width;
+        self.toolbarViewWidth = self.toolbarView.frame.size.width;
     }
     
     if (recognizer.state == UIGestureRecognizerStateChanged) {
         
-        CGFloat offset = self.imageViewWidth + point.x;
+        CGFloat offset = self.toolbarViewWidth + point.x;
         if (offset > self.view.frame.size.width)
             offset = self.view.frame.size.width;
         
         if (offset < 0)
             return;
         
-        CGRect frame = self.imageView.frame;
+        CGRect frame = self.toolbarView.frame;
         frame.size.width = offset;
-        self.imageView.frame = frame;
-        
-        frame = self.fadedView.frame;
-        frame.size.width = self.view.frame.size.width - offset;
-        frame.origin.x = offset;
-        self.fadedView.frame = frame;
+        self.toolbarView.frame = frame;
         
         [self updateChildViewLayout];
     }
@@ -296,12 +258,6 @@
             [UIView animateWithDuration:0.2f animations:^{
                 [self updateViewsWithThreshold:self.threshold];
             }];
-            
-            if (self.fadedView.alpha != 1) {
-                [UIView animateWithDuration:self.animationDuration animations:^{
-                    self.fadedView.alpha = 1;
-                } completion:nil];
-            }
         }
     }
 }
